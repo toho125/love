@@ -48,12 +48,12 @@
           <div class="group">
             <h4>기본 정보</h4>
             <div class="fields">
-              <label>이름 <input id="name" value="나"></label>
+              <label>이름 <input id="name" placeholder="이름"></label>
               <label>성별
-                <select id="gender"><option selected>남</option><option>여</option></select>
+                <select id="gender" required><option value="" selected disabled>선택</option><option>남</option><option>여</option></select>
               </label>
-              <label>나이 <input id="age" type="number" value="24"></label>
-              <label>키 (cm) <input id="height" type="number" value="178"></label>
+              <label>나이 <input id="age" type="number" placeholder="예: 24" required></label>
+              <label>키 (cm) <input id="height" type="number" placeholder="예: 175" required></label>
             </div>
           </div>
 
@@ -61,24 +61,24 @@
             <h4>외모</h4>
             <div class="fields">
               <label>외모
-                <select id="looks"><option>못생김</option><option selected>적정</option><option>잘생김</option><option>예쁨</option></select>
+                <select id="looks" required><option value="" selected disabled>선택</option><option>못생김</option><option>적정</option><option>잘생김</option><option>예쁨</option></select>
               </label>
-              <label>동물상 <input id="animal" value="나무늘보상"></label>
+              <label>동물상 <input id="animal" placeholder="예: 강아지상"></label>
             </div>
           </div>
 
           <div class="group">
             <h4>라이프</h4>
             <div class="fields">
-              <label>직업 <input id="job" value="학생"></label>
+              <label>직업 <input id="job" placeholder="예: 회사원" required></label>
               <label>종교
-                <select id="religion"><option>무교</option><option selected>천주교</option><option>기독교</option><option>불교</option></select>
+                <select id="religion" required><option value="" selected disabled>선택</option><option>무교</option><option>천주교</option><option>기독교</option><option>불교</option></select>
               </label>
               <label>건강상태
-                <select id="health"><option selected>매우 건강</option><option>건강</option><option>보통</option><option>나쁨</option></select>
+                <select id="health" required><option value="" selected disabled>선택</option><option>매우 건강</option><option>건강</option><option>보통</option><option>나쁨</option></select>
               </label>
               <label>흡연
-                <select id="smoker"><option value="yes" selected>흡연함</option><option value="no">흡연 안 함</option></select>
+                <select id="smoker" required><option value="" selected disabled>선택</option><option value="yes">흡연함</option><option value="no">흡연 안 함</option></select>
               </label>
             </div>
           </div>
@@ -87,16 +87,17 @@
             <h4>성향</h4>
             <div class="fields">
               <label>MBTI
-                <select id="mbti">
-                  <option>ISTJ</option><option>ISFJ</option><option selected>INFJ</option><option>INTJ</option>
+                <select id="mbti" required>
+                  <option value="" selected disabled>선택</option>
+                  <option>ISTJ</option><option>ISFJ</option><option>INFJ</option><option>INTJ</option>
                   <option>ISTP</option><option>ISFP</option><option>INFP</option><option>INTP</option>
                   <option>ESTP</option><option>ESFP</option><option>ENFP</option><option>ENTP</option>
                   <option>ESTJ</option><option>ESFJ</option><option>ENFJ</option><option>ENTJ</option>
                 </select>
               </label>
-              <label>관심사 (쉼표로 구분) <input id="interests" value="운동, 피아노"></label>
+              <label>관심사 (쉼표로 구분) <input id="interests" placeholder="예: 운동, 영화" required></label>
               <label class="wide">성격 (한두 줄)
-                <textarea id="personality" rows="2" placeholder="예: 차분하고 다정한 편이에요. 운동할 땐 열정적이에요.">다정하려고 노력하는 편이고, 유머가 조금 있는 편이에요. 인내심이 굉장히 강한 편이에요.</textarea>
+                <textarea id="personality" rows="2" placeholder="예: 차분하고 다정한 편이에요. 운동할 땐 열정적이에요."></textarea>
               </label>
             </div>
             <div class="chips" id="traitHint"></div>
@@ -150,6 +151,7 @@
       <p class="hint">만점 항목, 깎인 점수, 바로 위·아래 순위와의 차이로 설명해요.</p>
 
       <button id="go" class="go">매칭 시작하기 ♥</button>
+      <p id="formError" class="form-error" hidden></p>
     </section>
 
     <!-- 3. 결과 -->

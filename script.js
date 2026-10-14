@@ -151,7 +151,25 @@ function readCond() {
   };
 }
 
+// 필수 칸이 비어 있으면 빨간 테두리로 표시하고 첫 번째 빈칸으로 이동
+function checkProfile() {
+  const missing = [...document.querySelectorAll("#step1 [required]")].filter((el) => !el.value.trim());
+  document.querySelectorAll("#step1 .invalid").forEach((el) => el.classList.remove("invalid"));
+  missing.forEach((el) => el.classList.add("invalid"));
+  if (!missing.length) {
+    $("formError").hidden = true;
+    return true;
+  }
+  const names = missing.map((el) => el.closest("label").firstChild.textContent.trim());
+  $("formError").textContent = `프로필에서 빈칸을 채워주세요: ${names.join(", ")}`;
+  $("formError").hidden = false;
+  missing[0].scrollIntoView({ behavior: "smooth", block: "center" });
+  missing[0].focus({ preventScroll: true });
+  return false;
+}
+
 function run() {
+  if (!checkProfile()) return;
   const me = readMe();
   const cond = readCond();
   // ① 올린다: 내 프로필도 저장소에 들어간다
@@ -388,7 +406,14 @@ $("personality").addEventListener("input", () => {
   const t = findTraits($("personality").value);
   $("traitHint").innerHTML = t.length
     ? `인식된 성격 ${t.map((x) => `<span class="chip">${x}</span>`).join("")}`
-    : "인식된 성격 키워드가 없어요 (다정, 활발, 차분, 유머, 성실, 열정, 감성, 솔직, 느긋, 즉흥, 계획)";
+    : "인식 가능한 성격: 다정, 활발, 차분, 유머, 성실, 열정, 감성, 솔직, 느긋, 즉흥, 계획";
+});
+
+// 빈칸을 채우면 빨간 테두리를 바로 없앤다
+document.querySelectorAll("#step1 [required]").forEach((el) => {
+  const clear = () => { if (el.value.trim()) el.classList.remove("invalid"); };
+  el.addEventListener("input", clear);
+  el.addEventListener("change", clear);
 });
 $("personality").dispatchEvent(new Event("input"));
 
