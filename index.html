@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>소개팅 매칭 로직</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>가장 잘 맞는 상대를 찾아줍니다</h1>
+    <p>내 프로필을 올리면 프로필 저장소의 가상 인물과 하나씩 비교해, 점수 순으로 추천하고 그 이유를 보여줍니다.</p>
+  </header>
+
+  <main>
+    <section>
+      <h2><span class="num">1</span> 내 프로필 올리기</h2>
+      <div class="my-photo">
+        <img id="myPhotoPreview" class="photo-lg" alt="내 사진 미리보기" hidden>
+        <div id="myPhotoEmpty" class="photo-empty">사진 없음</div>
+        <label>내 사진 <input id="myPhoto" type="file" accept="image/*"></label>
+      </div>
+      <div class="grid">
+        <label>이름 <input id="name" value="나"></label>
+        <label>성별
+          <select id="gender"><option selected>남</option><option>여</option></select>
+        </label>
+        <label>나이 <input id="age" type="number" value="24"></label>
+        <label>키 (cm) <input id="height" type="number" value="178"></label>
+        <label>외모
+          <select id="looks"><option>못생김</option><option selected>적정</option><option>잘생김</option><option>예쁨</option></select>
+        </label>
+        <label>동물상 <input id="animal" value="나무늘보상"></label>
+        <label>종교
+          <select id="religion"><option>무교</option><option selected>천주교</option><option>기독교</option><option>불교</option></select>
+        </label>
+        <label>관심사 (쉼표로 구분) <input id="interests" value="운동, 피아노"></label>
+        <label>직업 <input id="job" value="학생"></label>
+        <label>MBTI
+          <select id="mbti">
+            <option>ISTJ</option><option>ISFJ</option><option selected>INFJ</option><option>INTJ</option>
+            <option>ISTP</option><option>ISFP</option><option>INFP</option><option>INTP</option>
+            <option>ESTP</option><option>ESFP</option><option>ENFP</option><option>ENTP</option>
+            <option>ESTJ</option><option>ESFJ</option><option>ENFJ</option><option>ENTJ</option>
+          </select>
+        </label>
+        <label>건강상태
+          <select id="health"><option selected>매우 건강</option><option>건강</option><option>보통</option><option>나쁨</option></select>
+        </label>
+        <label>흡연 여부
+          <select id="smoker"><option value="yes" selected>흡연함</option><option value="no">흡연 안 함</option></select>
+        </label>
+        <label class="wide">성격 (한두 줄)
+          <textarea id="personality" rows="2" placeholder="예: 차분하고 다정한 편이에요. 운동할 땐 열정적이에요.">다정하려고 노력하는 편이고, 유머가 조금 있는 편이에요. 인내심이 굉장히 강한 편이에요.</textarea>
+          <span id="traitHint">인식 가능한 성격: 다정, 활발, 차분, 유머, 성실, 열정, 감성, 솔직, 느긋, 즉흥, 계획</span>
+        </label>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="num">2</span> 내 로직</h2>
+
+      <h3>① 거르기: 절대 안 되는 조건</h3>
+      <p class="muted">나 자신과 같은 성별은 항상 제외됩니다. 성별을 바꾸면 최소 키 기본값이 바뀝니다 (남 → 160cm, 여 → 170cm).</p>
+      <div class="grid">
+        <label>상대 최소 나이 <input id="minAge" type="number" value="21"></label>
+        <label>상대 최대 나이 <input id="maxAge" type="number" value="34"></label>
+        <label>상대 최소 키 (cm) <input id="minHeight" type="number" value="160"></label>
+        <label class="check"><input id="needIncome" type="checkbox" checked> 수입 없는 사람 제외</label>
+        <label class="check"><input id="noSmoker" type="checkbox"> 흡연자 제외</label>
+      </div>
+
+      <h3>② 점수: 무엇이 맞으면 몇 점? (총 100점)</h3>
+      <div class="table-wrap">
+        <table class="rules">
+          <thead><tr><th>항목</th><th>배점</th><th>채점 방식</th></tr></thead>
+          <tbody>
+            <tr><td>외모</td><td>20</td><td>예쁨·잘생김 20 / 적정 10 / 못생김 0</td></tr>
+            <tr><td>관심사</td><td>15</td><td>내 관심사와 겹치는 비율만큼 (2개 중 1개 겹치면 7.5)</td></tr>
+            <tr><td>직업</td><td>13</td><td>수입 안정 13 / 보통 7 / 없음 0</td></tr>
+            <tr><td>건강</td><td>12</td><td>매우 건강 12 / 건강 8 / 보통 4 / 나쁨 0</td></tr>
+            <tr><td>키</td><td>10</td><td>상대가 여자: 160~170cm 10 / 171~175cm 7 / 176cm 이상 4 / 160cm 미만 2<br>상대가 남자: 175~185cm 10 / 170~174cm·186cm 이상 7 / 170cm 미만 2</td></tr>
+            <tr><td>나이</td><td>10</td><td>나이 차 0~2살 10 / 3~5살 6 / 6살 이상 2</td></tr>
+            <tr><td>성격</td><td>10</td><td>성격 문장에서 키워드(다정, 활발, 차분 등 11가지)를 찾아 같은 성격 1개 4 / 2개 7 / 3개 이상 10, 활발↔차분처럼 보완되면 +3 (최대 10)</td></tr>
+            <tr><td>MBTI</td><td>5</td><td>S/N 같고 E/I 다르면 5 / 둘 다 같으면 3 / S/N 다르면 0</td></tr>
+            <tr><td>종교</td><td>5</td><td>같으면 5</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>③ 이유: 왜 이 사람이 1위인가?</h3>
+      <p class="muted">만점 항목, 깎인 점수, 2위와의 항목별 차이로 설명합니다.</p>
+
+      <button id="go">추천 받기</button>
+    </section>
+
+    <section>
+      <h2><span class="num">3</span> 추천 결과</h2>
+      <div id="result"><p class="muted">위에서 "추천 받기"를 누르면 결과가 나옵니다.</p></div>
+    </section>
+
+    <section>
+      <details>
+        <summary>프로필 저장소 보기 (가상 인물 <span id="storeCount"></span>)</summary>
+        <div id="store" class="store"></div>
+      </details>
+    </section>
+  </main>
+
+  <script src="data.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
