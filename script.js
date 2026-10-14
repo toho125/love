@@ -253,7 +253,7 @@ function renderResult(me, store, passed, removed) {
   const shown = removed.filter((r) => r.reason !== "같은 성별");
   const removedHtml = `
     <details class="filter-summary">
-      <summary>거르기 결과: 전체 <b>${store.length}</b>명 중 <b>${removed.length}</b>명 제외, <b>${passed.length}</b>명 비교</summary>
+      <summary>필수 조건 결과: 전체 <b>${store.length}</b>명 중 <b>${removed.length}</b>명 제외, <b>${passed.length}</b>명 비교</summary>
       <ul class="removed">
         ${sameGender ? `<li><span>같은 성별</span>${sameGender}명</li>` : ""}
         ${shown.map((r) => `<li><span>${esc(r.reason)}</span>${esc(r.person.name)}</li>`).join("")}
@@ -269,7 +269,7 @@ function renderResult(me, store, passed, removed) {
     el.innerHTML = `
       <div class="empty">
         <h3>조건에 맞는 사람이 0명이에요</h3>
-        <p>거르기 조건이 너무 엄격해요. 많이 걸린 조건을 완화해 보세요.</p>
+        <p>필수 조건이 너무 엄격해요. 많이 걸린 조건을 완화해 보세요.</p>
         <ul>${Object.entries(counts).map(([k, v]) => `<li>${esc(k)} ${v}명</li>`).join("")}</ul>
       </div>
       ${removedHtml}`;
