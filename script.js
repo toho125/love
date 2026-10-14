@@ -101,13 +101,22 @@ function filterReason(me, cond, p) {
   return null;
 }
 
+// 총점이 같으면 배점이 큰 항목(외모 → 관심사 → 직업 → 건강 → 키 → 나이 → 성격 → MBTI → 종교) 순으로 비교
+function byPriority(a, b) {
+  if (b.total !== a.total) return b.total - a.total;
+  for (let i = 0; i < a.items.length; i++) {
+    if (b.items[i].score !== a.items[i].score) return b.items[i].score - a.items[i].score;
+  }
+  return 0;
+}
+
 // ===== 화면 =====
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => (Number.isInteger(n) ? n : n.toFixed(1));
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // 가상 인물 사진: images/{id}.jpg
-const photo = (p, cls) => `<img class="${cls}" src="images/${p.id}.jpg" alt="${esc(p.name)} 사진">`;
+const photo = (p) => `<img src="images/${p.id}.jpg" alt="${esc(p.name)} 사진" loading="lazy">`;
 
 // 내 사진: 브라우저 안에서만 쓰고 업로드하지 않는다
 let myPhotoUrl = null;
@@ -158,27 +167,18 @@ function run() {
   passed.sort(byPriority);
 
   renderResult(me, store, passed, removed);
-  $("result").scrollIntoView({ behavior: "smooth" });
-}
-
-// 총점이 같으면 배점이 큰 항목(외모 → 관심사 → 직업 → 건강 → 키 → 나이 → 성격 → MBTI → 종교) 순으로 비교
-function byPriority(a, b) {
-  if (b.total !== a.total) return b.total - a.total;
-  for (let i = 0; i < a.items.length; i++) {
-    if (b.items[i].score !== a.items[i].score) return b.items[i].score - a.items[i].score;
-  }
-  return 0;
+  $("step3").scrollIntoView({ behavior: "smooth" });
 }
 
 // 각 순위의 이유: 강점, 약점, 바로 위 순위와의 차이
 function rankReason(r, above) {
   const parts = [];
   const strong = r.items.filter((i) => i.score === i.max).map((i) => i.key);
-  if (strong.length) parts.push(`<span class="plus">강점</span> ${strong.join("·")} 만점`);
+  if (strong.length) parts.push(`<span class="plus">강점</span>${strong.join("·")} 만점`);
 
   const weak = r.items.filter((i) => i.score <= i.max / 2)
     .map((i) => `${i.key} ${fmt(i.score)}점(${esc(i.note)})`);
-  if (weak.length) parts.push(`<span class="minus">약점</span> ${weak.join(", ")}`);
+  if (weak.length) parts.push(`<span class="minus">약점</span>${weak.join(", ")}`);
 
   if (above) {
     const gap = above.total - r.total;
@@ -189,20 +189,26 @@ function rankReason(r, above) {
       .slice(0, 2)
       .map((x) => `${x.key} ${fmt(x.d)}`);
     parts.push(gap === 0
-      ? `위 순위 ${esc(above.person.name)}님과 동점이지만 배점이 큰 항목에서 밀림 (${lost.join(", ")})`
-      : `위 순위 ${esc(above.person.name)}님보다 ${fmt(gap)}점 낮음 (주로 ${lost.join(", ")})`);
+      ? `<span class="gap">순위 차이</span>${esc(above.person.name)}님과 동점이지만 배점이 큰 항목에서 밀림 (${lost.join(", ")})`
+      : `<span class="gap">순위 차이</span>위 순위 ${esc(above.person.name)}님보다 ${fmt(gap)}점 낮음 (주로 ${lost.join(", ")})`);
   }
-  return parts.join("<br>");
+  return `<ul class="rank-why">${parts.map((p) => `<li>${p}</li>`).join("")}</ul>`;
+}
+
+// 접힌 카드에 보이는 한 줄 요약
+function oneLine(r) {
+  const strong = r.items.filter((i) => i.score === i.max).map((i) => i.key);
+  return strong.length ? `${strong.slice(0, 4).join("·")} 만점` : "만점 항목 없음";
 }
 
 function scoreBars(items) {
-  return items.map((i) => `
+  return `<div class="bars">${items.map((i) => `
     <div class="bar-row">
       <span class="bar-key">${i.key}</span>
       <div class="bar"><div class="bar-fill" style="width:${(i.score / i.max) * 100}%"></div></div>
       <span class="bar-num">${fmt(i.score)}/${i.max}</span>
       <span class="bar-note">${esc(i.note)}</span>
-    </div>`).join("");
+    </div>`).join("")}</div>`;
 }
 
 function whyFirst(me, passed, removed) {
@@ -210,11 +216,11 @@ function whyFirst(me, passed, removed) {
   const lines = [];
 
   const full = first.items.filter((i) => i.score === i.max).map((i) => i.key);
-  if (full.length) lines.push(`<b>만점 항목</b>: ${full.join(", ")}`);
+  if (full.length) lines.push(`<b>만점 항목</b> ${full.join(", ")}`);
 
   const lost = first.items.filter((i) => i.score < i.max)
     .map((i) => `${i.key} -${fmt(i.max - i.score)} (${esc(i.note)})`);
-  if (lost.length) lines.push(`<b>깎인 점수</b>: ${lost.join(", ")}`);
+  if (lost.length) lines.push(`<b>깎인 점수</b> ${lost.join(", ")}`);
 
   const second = passed[1];
   if (second) {
@@ -223,7 +229,7 @@ function whyFirst(me, passed, removed) {
       .filter((x) => x.d !== 0)
       .sort((a, b) => b.d - a.d)
       .map((x) => `${x.key} ${x.d > 0 ? "+" : ""}${fmt(x.d)}`);
-    lines.push(`<b>2위 ${esc(second.person.name)}님(${fmt(second.total)}점)보다 ${fmt(first.total - second.total)}점 높음</b>: ${diffs.join(", ")}`);
+    lines.push(`<b>2위 ${esc(second.person.name)}님(${fmt(second.total)}점)보다 ${fmt(first.total - second.total)}점 높음</b> ${diffs.join(", ")}`);
   } else {
     lines.push("조건을 통과한 사람이 1명뿐이라 자동으로 1위입니다.");
   }
@@ -234,7 +240,7 @@ function whyFirst(me, passed, removed) {
     .map((r) => ({ r, s: scorePerson(me, r.person).total }))
     .filter((x) => x.s > first.total);
   for (const { r, s } of beaten) {
-    lines.push(`참고: ${esc(r.person.name)}님은 점수만 보면 ${fmt(s)}점이지만 <b>${esc(r.reason)}</b> 조건으로 제외됐습니다.`);
+    lines.push(`<b>참고</b> ${esc(r.person.name)}님은 점수만 보면 ${fmt(s)}점이지만 ${esc(r.reason)} 조건으로 제외됐어요.`);
   }
 
   return `<ul class="why">${lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
@@ -246,11 +252,13 @@ function renderResult(me, store, passed, removed) {
   const sameGender = removed.filter((r) => r.reason === "같은 성별").length;
   const shown = removed.filter((r) => r.reason !== "같은 성별");
   const removedHtml = `
-    <h3>거르기 결과: ${store.length}명 중 ${removed.length}명 제외</h3>
-    <ul class="removed">
-      ${sameGender ? `<li><span class="tag">같은 성별</span> ${sameGender}명</li>` : ""}
-      ${shown.map((r) => `<li><span class="tag">${esc(r.reason)}</span> ${esc(r.person.name)}</li>`).join("")}
-    </ul>`;
+    <details class="filter-summary">
+      <summary>거르기 결과: 전체 <b>${store.length}</b>명 중 <b>${removed.length}</b>명 제외, <b>${passed.length}</b>명 비교</summary>
+      <ul class="removed">
+        ${sameGender ? `<li><span>같은 성별</span>${sameGender}명</li>` : ""}
+        ${shown.map((r) => `<li><span>${esc(r.reason)}</span>${esc(r.person.name)}</li>`).join("")}
+      </ul>
+    </details>`;
 
   if (passed.length === 0) {
     const counts = {};
@@ -260,84 +268,127 @@ function renderResult(me, store, passed, removed) {
     }
     el.innerHTML = `
       <div class="empty">
-        <h2>조건에 맞는 사람이 0명입니다</h2>
-        <p>거르기 조건이 너무 엄격해요. 아래에서 많이 걸린 조건을 완화해 보세요.</p>
-        <ul>${Object.entries(counts).map(([k, v]) => `<li>${esc(k)}: ${v}명</li>`).join("")}</ul>
+        <h3>조건에 맞는 사람이 0명이에요</h3>
+        <p>거르기 조건이 너무 엄격해요. 많이 걸린 조건을 완화해 보세요.</p>
+        <ul>${Object.entries(counts).map(([k, v]) => `<li>${esc(k)} ${v}명</li>`).join("")}</ul>
       </div>
       ${removedHtml}`;
     return;
   }
 
   const first = passed[0];
+  const fp = first.person;
+  const rest = passed.slice(1);
+
   el.innerHTML = `
-    <div class="winner">
-      <div class="winner-head">
-        ${myPhotoUrl ? `<img class="photo-lg" src="${myPhotoUrl}" alt="내 사진"><span class="heart">❤</span>` : ""}
-        ${photo(first.person, "photo-lg")}
-        <span class="badge">1위</span>
-        <h2>${esc(first.person.name)} <small>${first.person.age}세 · ${first.person.height}cm · ${esc(first.person.job)}</small></h2>
-        <span class="total">${fmt(first.total)}<small>/100</small></span>
+    <div class="match">
+      <div class="match-top">
+        <div class="couple">
+          ${myPhotoUrl ? `<img src="${myPhotoUrl}" alt="내 사진"><span class="heart">♥</span>` : ""}
+          ${photo(fp)}
+        </div>
+        <div class="match-info">
+          <span class="crown">BEST MATCH · 1위</span>
+          <h3>${esc(fp.name)}</h3>
+          <div class="meta">
+            <span>${fp.age}세</span><span>${fp.height}cm</span><span>${esc(fp.job)}</span>
+            <span>${esc(fp.animal)}</span><span>${esc(fp.mbti)}</span>
+          </div>
+          <p class="quote">"${esc(fp.personality)}"</p>
+        </div>
+        <div class="ring" style="--p:${first.total}"><span>${fmt(first.total)}<small>/ 100점</small></span></div>
       </div>
-      <p class="quote">"${esc(first.person.personality)}"</p>
-      <h3>왜 이 사람이 1위인가?</h3>
+      <h4 class="why-title">왜 이 사람이 1위인가?</h4>
       ${whyFirst(me, passed, removed)}
       ${scoreBars(first.items)}
     </div>
 
     ${removedHtml}
 
-    <h3>전체 순위와 이유 (${passed.length}명)</h3>
-    <ol class="ranking">
-      ${passed.map((r, idx) => `
-        <li class="${idx === 0 ? "top" : ""}">
-          <div class="rank-head">
-            <span class="rank">${idx + 1}위</span>
-            ${photo(r.person, "photo-sm")}
-            <b>${esc(r.person.name)}</b>
-            <span class="muted">${r.person.age}세 · ${r.person.height}cm · ${esc(r.person.job)} · ${esc(r.person.animal)}</span>
-            <span class="rank-total">${fmt(r.total)}점</span>
-          </div>
-          <div class="rank-why">${rankReason(r, passed[idx - 1])}</div>
-        </li>`).join("")}
-    </ol>
+    ${rest.length ? `
+      <h3 class="list-title">2위부터 순위와 이유 <span class="muted">눌러서 자세히 보기</span></h3>
+      <div class="ranking">
+        ${rest.map((r, i) => `
+          <details class="rank-card">
+            <summary>
+              <span class="rank-no">${i + 2}</span>
+              ${photo(r.person)}
+              <div>
+                <div class="rank-name">${esc(r.person.name)}<small>${r.person.age}세 · ${r.person.height}cm · ${esc(r.person.job)}</small></div>
+                <div class="rank-line">${oneLine(r)}</div>
+              </div>
+              <span class="score-pill">${fmt(r.total)}</span>
+            </summary>
+            <div class="rank-body">
+              ${rankReason(r, passed[i])}
+              ${scoreBars(r.items)}
+            </div>
+          </details>`).join("")}
+      </div>` : ""}
 
-    <h3>항목별 점수표</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>순위</th><th>이름</th>${first.items.map((i) => `<th>${i.key}<br><small>${i.max}</small></th>`).join("")}<th>총점</th></tr></thead>
-        <tbody>
-          ${passed.map((r, idx) => `
-            <tr class="${idx === 0 ? "top" : ""}">
-              <td>${idx + 1}</td>
-              <td>${esc(r.person.name)}</td>
-              ${r.items.map((i) => `<td title="${esc(i.note)}">${fmt(i.score)}</td>`).join("")}
-              <td><b>${fmt(r.total)}</b></td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`;
+    <details class="table-details">
+      <summary>항목별 점수표 전체 보기</summary>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>순위</th><th>이름</th>${first.items.map((i) => `<th>${i.key}<small>${i.max}</small></th>`).join("")}<th>총점</th></tr></thead>
+          <tbody>
+            ${passed.map((r, idx) => `
+              <tr class="${idx === 0 ? "top" : ""}">
+                <td>${idx + 1}</td>
+                <td>${esc(r.person.name)}</td>
+                ${r.items.map((i) => `<td title="${esc(i.note)}">${fmt(i.score)}</td>`).join("")}
+                <td><b>${fmt(r.total)}</b></td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    </details>`;
+}
+
+// 점수 배분 막대: scorePerson의 배점을 그대로 가져와서 그린다
+function renderWeights() {
+  const items = scorePerson(readMe(), PROFILES[0]).items;
+  const color = (i) => `hsl(${335 - i * (80 / (items.length - 1))}, 85%, 62%)`;
+  $("weightBar").innerHTML = items.map((it, i) =>
+    `<div style="flex:${it.max};background:${color(i)}" title="${it.key} ${it.max}점">${it.max >= 10 ? it.key : ""}</div>`).join("");
+  $("weightLegend").innerHTML = items.map((it, i) =>
+    `<span style="--c:${color(i)}">${it.key}<b>${it.max}</b></span>`).join("");
 }
 
 function renderStore() {
   const women = PROFILES.filter((p) => p.gender === "여").length;
-  $("storeCount").textContent = `${PROFILES.length}명: 여 ${women}, 남 ${PROFILES.length - women}`;
+  $("storeCount").textContent = `가상 인물 ${PROFILES.length}명 · 여 ${women} · 남 ${PROFILES.length - women}`;
   $("store").innerHTML = PROFILES.map((p) => `
     <div class="card">
-      ${photo(p, "photo-card")}
-      <b>${esc(p.name)}</b> <span class="muted">${p.gender} · ${p.age}세 · ${p.height}cm</span>
-      <div>${esc(p.looks)} · ${esc(p.animal)} · ${esc(p.mbti)}</div>
-      <div class="muted">${esc(p.job)} · ${esc(p.religion)} · ${esc(p.health)}${p.smoker ? " · 흡연" : ""}</div>
-      <div class="muted">${p.interests.map(esc).join(", ")}</div>
-      <div class="quote">"${esc(p.personality)}"</div>
+      ${photo(p)}
+      <div>
+        <b>${esc(p.name)}</b>
+        <p>${p.gender} · ${p.age}세 · ${p.height}cm · ${esc(p.mbti)}</p>
+        <p>${esc(p.job)} · ${esc(p.animal)}${p.smoker ? " · 흡연" : ""}</p>
+        <p>"${esc(p.personality)}"</p>
+      </div>
     </div>`).join("");
 }
 
+function renderHero() {
+  const faces = ["p01", "m01", "p03", "m11", "p17", "m17"];
+  $("heroFaces").innerHTML = faces
+    .map((id) => PROFILES.find((p) => p.id === id))
+    .filter(Boolean)
+    .map(photo).join("");
+}
+
+renderHero();
+renderWeights();
 renderStore();
 $("go").addEventListener("click", run);
+
 // 성격을 입력하면 인식된 키워드를 바로 보여준다
 $("personality").addEventListener("input", () => {
   const t = findTraits($("personality").value);
-  $("traitHint").textContent = t.length ? `인식된 성격: ${t.join(", ")}` : "인식된 성격 키워드가 없어요";
+  $("traitHint").innerHTML = t.length
+    ? `인식된 성격 ${t.map((x) => `<span class="chip">${x}</span>`).join("")}`
+    : "인식된 성격 키워드가 없어요 (다정, 활발, 차분, 유머, 성실, 열정, 감성, 솔직, 느긋, 즉흥, 계획)";
 });
 $("personality").dispatchEvent(new Event("input"));
 
@@ -349,6 +400,7 @@ $("myPhoto").addEventListener("change", () => {
   $("myPhotoPreview").hidden = !myPhotoUrl;
   $("myPhotoEmpty").hidden = !!myPhotoUrl;
 });
+
 // 성별을 바꾸면 상대 최소 키 기본값도 바꾼다 (남 → 여자 상대 160cm, 여 → 남자 상대 170cm)
 $("gender").addEventListener("change", () => {
   $("minHeight").value = $("gender").value === "남" ? 160 : 170;
