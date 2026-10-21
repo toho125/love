@@ -40,6 +40,33 @@ function personalityScore(myText, theirText) {
   return { score, note: notes.join(" / ") || `겹치는 성격 없음 (상대: ${theirs.join("·") || "-"})` };
 }
 
+// ===== 성격 점수: 임베딩(의미 유사도)으로 점수, 키워드로 이유 =====
+// 40명끼리 성격 문장을 비교한 유사도 분포에서 하위 10%(0.81)는 0점, 상위 10%(0.91)는 10점, 사이는 비례
+const SIM_LOW = 0.81;
+const SIM_HIGH = 0.91;
+
+function cosine(a, b) {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  return dot / Math.sqrt(na * nb);
+}
+
+function similarityScore(sim) {
+  const ratio = Math.min(1, Math.max(0, (sim - SIM_LOW) / (SIM_HIGH - SIM_LOW)));
+  return Math.round(ratio * 20) / 2;
+}
+
+// 내 성격 임베딩이 있으면 의미 유사도로 점수를 매기고, 없으면(서버 연결 실패 등) 키워드 방식으로 계산한다
+function personalityItem(me, p) {
+  const keyword = personalityScore(me.personality, p.personality);
+  const theirs = typeof PERSONALITY_EMBEDDINGS !== "undefined" && PERSONALITY_EMBEDDINGS[p.id];
+  if (me.embedding && theirs) {
+    const sim = cosine(me.embedding, theirs);
+    return { score: similarityScore(sim), note: `의미 유사도 ${sim.toFixed(2)} · ${keyword.note}` };
+  }
+  return keyword;
+}
+
 // 상대가 여자면 160~170cm, 남자면 175~185cm에 만점
 function heightScore(h, gender) {
   if (gender === "남") {
@@ -71,7 +98,7 @@ function scorePerson(me, p) {
   const perInterest = me.interests.length ? 15 / me.interests.length : 0;
   const ageDiff = Math.abs(me.age - p.age);
   const mbti = mbtiScore(me.mbti, p.mbti);
-  const pers = personalityScore(me.personality, p.personality);
+  const pers = personalityItem(me, p);
 
   const items = [
     { key: "외모", max: 20, score: LOOKS_SCORE[p.looks] ?? 0, note: `${p.looks} · ${p.animal}` },
@@ -121,6 +148,119 @@ const photo = (p) => `<img src="images/${p.id}.jpg" alt="${esc(p.name)} 사진" 
 // 내 사진: 브라우저 안에서만 쓰고 업로드하지 않는다
 let myPhotoUrl = null;
 
+// ===== AI 설명 =====
+// 점수는 위의 로직이 계산하고, AI(Gemini)는 그 결과를 자연스러운 문장으로 풀어 설명만 한다.
+// Gemini API 키는 Cloudflare Worker에 숨겨 두고, 사이트는 Worker 주소로만 요청한다.
+const AI_URL = "https://love-ai.love-ai-worker.workers.dev";
+let lastMatch = null;
+
+async function explainWithAI() {
+  if (!lastMatch) return;
+  const { me, passed } = lastMatch;
+  const [first, second] = passed;
+  const btn = $("aiBtn");
+  const out = $("aiText");
+  btn.disabled = true;
+  btn.textContent = "AI가 설명을 쓰는 중…";
+  out.hidden = false;
+  out.classList.remove("ai-error");
+  out.textContent = "";
+
+  const payload = {
+    me: { gender: me.gender, age: me.age, interests: me.interests.join(", "), mbti: me.mbti, religion: me.religion, personality: me.personality },
+    first: { name: first.person.name, age: first.person.age, job: first.person.job, personality: first.person.personality, total: first.total, items: first.items },
+    second: second ? { name: second.person.name, total: second.total } : null,
+    diffs: second ? diffList(first, second).join(", ") : "",
+  };
+
+  try {
+    const res = await fetch(AI_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.text) throw new Error(data.error || "AI 설명을 지금 불러올 수 없어요.");
+    await typeOut(out, data.text);
+    btn.textContent = "✨ 다시 듣기";
+  } catch (e) {
+    out.classList.add("ai-error");
+    out.textContent = `${e.message.startsWith("Failed") ? "AI 서버에 연결할 수 없어요." : e.message} 위의 이유 설명은 그대로 확인할 수 있어요.`;
+    btn.textContent = "✨ 다시 시도";
+  }
+  btn.disabled = false;
+}
+
+// ===== 1위에게 메시지 보내기 (가상 인물은 AI가 성격대로 답장) =====
+// 상대 id → 대화 목록. 페이지 안에서만 기억하고, 새로고침하면 사라진다
+const chats = new Map();
+let chatBusy = false;
+const nowTime = () => new Date().toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" });
+
+function renderChat(typing = false) {
+  const p = lastMatch.passed[0].person;
+  const msgs = chats.get(p.id) || [];
+  const log = $("chatLog");
+  $("chatInput").placeholder = msgs.length ? "메시지를 입력하세요" : "첫 메시지를 보내 보세요";
+  if (!msgs.length && !typing) {
+    log.innerHTML = `<p class="chat-empty">${esc(p.name)}님은 가상 인물이라, AI가 ${esc(p.name)}님의 성격대로 답장해요.</p>`;
+    return;
+  }
+  log.innerHTML = msgs.map((m) => m.role === "system"
+    ? `<p class="chat-system">${esc(m.text)}</p>`
+    : `<div class="bubble-row ${m.role}">
+        ${m.role === "them" ? photo(p) : ""}
+        <div>
+          <p class="bubble">${esc(m.text)}</p>
+          <span class="bubble-time">${m.role === "me" ? "전송됨 · " : ""}${m.time}</span>
+        </div>
+      </div>`).join("")
+    + (typing ? `<div class="bubble-row them">${photo(p)}<p class="bubble typing">${esc(p.name)}님이 입력 중<i>.</i><i>.</i><i>.</i></p></div>` : "");
+  log.scrollTop = log.scrollHeight;
+}
+
+async function sendChat(text) {
+  const { me, passed } = lastMatch;
+  const p = passed[0].person;
+  if (!chats.has(p.id)) chats.set(p.id, []);
+  const msgs = chats.get(p.id);
+  msgs.push({ role: "me", text, time: nowTime() });
+
+  chatBusy = true;
+  $("chatInput").disabled = true;
+  renderChat(true);
+  try {
+    const res = await fetch(`${AI_URL}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        persona: { name: p.name, gender: p.gender, age: p.age, job: p.job, interests: p.interests.join(", "), mbti: p.mbti, animal: p.animal, personality: p.personality },
+        // 이름 칸을 비우면 readMe()가 "나"로 채우는데, 그건 호칭으로 쓰지 않는다
+        me: { age: me.age, interests: me.interests.join(", "), name: me.name === "나" ? "" : me.name },
+        messages: msgs.filter((m) => m.role !== "system").map(({ role, text }) => ({ role, text })),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.text) throw new Error();
+    msgs.push({ role: "them", text: data.text, time: nowTime() });
+  } catch {
+    msgs.push({ role: "system", text: `${p.name}님의 답장을 불러오지 못했어요. 메시지는 보내졌어요.` });
+  }
+  chatBusy = false;
+  // 답장을 기다리는 동안 매칭을 다시 돌렸으면 화면이 바뀌었을 수 있다
+  if (!$("chatLog") || lastMatch.passed[0].person.id !== p.id) return;
+  $("chatInput").disabled = false;
+  $("chatInput").focus();
+  renderChat();
+}
+
+// 한 글자씩 써지는 효과
+function typeOut(el, text) {
+  return new Promise((resolve) => {
+    let i = 0;
+    const timer = setInterval(() => {
+      el.textContent = text.slice(0, ++i);
+      if (i >= text.length) { clearInterval(timer); resolve(); }
+    }, 18);
+  });
+}
+
 function readMe() {
   return {
     id: "me",
@@ -168,10 +308,40 @@ function checkProfile() {
   return false;
 }
 
-function run() {
+// 내 성격 문장을 AI 서버에서 임베딩으로 바꾼다. 실패하면 null (그때는 키워드 방식으로 계산)
+const embedCache = new Map();
+async function embedPersonality(text) {
+  if (!text) return null;
+  if (embedCache.has(text)) return embedCache.get(text);
+  try {
+    const res = await fetch(`${AI_URL}/embed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texts: [text] }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json();
+    const vec = res.ok && data.embeddings?.[0];
+    if (!vec) return null;
+    embedCache.set(text, vec);
+    return vec;
+  } catch {
+    return null;
+  }
+}
+
+async function run() {
   if (!checkProfile()) return;
   const me = readMe();
   const cond = readCond();
+
+  const go = $("go");
+  go.disabled = true;
+  go.textContent = "성격 분석 중…";
+  me.embedding = await embedPersonality(me.personality);
+  go.disabled = false;
+  go.textContent = "매칭 시작하기 ♥";
+  const mode = !me.personality ? "none" : me.embedding ? "embedding" : "keyword";
   // ① 올린다: 내 프로필도 저장소에 들어간다
   const store = [...PROFILES, me];
 
@@ -184,7 +354,8 @@ function run() {
   }
   passed.sort(byPriority);
 
-  renderResult(me, store, passed, removed);
+  renderResult(me, store, passed, removed, mode);
+  if (passed.length) renderChat();
   $("step3").scrollIntoView({ behavior: "smooth" });
 }
 
@@ -229,6 +400,15 @@ function scoreBars(items) {
     </div>`).join("")}</div>`;
 }
 
+// 1위와 2위의 항목별 점수 차이 (1위가 앞선 항목부터)
+function diffList(first, second) {
+  return first.items
+    .map((i, idx) => ({ key: i.key, d: i.score - second.items[idx].score }))
+    .filter((x) => x.d !== 0)
+    .sort((a, b) => b.d - a.d)
+    .map((x) => `${x.key} ${x.d > 0 ? "+" : ""}${fmt(x.d)}`);
+}
+
 function whyFirst(me, passed, removed) {
   const first = passed[0];
   const lines = [];
@@ -242,12 +422,7 @@ function whyFirst(me, passed, removed) {
 
   const second = passed[1];
   if (second) {
-    const diffs = first.items
-      .map((i, idx) => ({ key: i.key, d: i.score - second.items[idx].score }))
-      .filter((x) => x.d !== 0)
-      .sort((a, b) => b.d - a.d)
-      .map((x) => `${x.key} ${x.d > 0 ? "+" : ""}${fmt(x.d)}`);
-    lines.push(`<b>2위 ${esc(second.person.name)}님(${fmt(second.total)}점)보다 ${fmt(first.total - second.total)}점 높음</b> ${diffs.join(", ")}`);
+    lines.push(`<b>2위 ${esc(second.person.name)}님(${fmt(second.total)}점)보다 ${fmt(first.total - second.total)}점 높음</b> ${diffList(first, second).join(", ")}`);
   } else {
     lines.push("조건을 통과한 사람이 1명뿐이라 자동으로 1위입니다.");
   }
@@ -264,8 +439,15 @@ function whyFirst(me, passed, removed) {
   return `<ul class="why">${lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
 }
 
-function renderResult(me, store, passed, removed) {
+const MODE_NOTE = {
+  embedding: "성격 점수는 AI 임베딩으로 두 사람의 성격 문장이 뜻으로 얼마나 비슷한지 계산했어요.",
+  keyword: "AI 서버에 연결되지 않아 성격 점수는 키워드 방식으로 계산했어요.",
+  none: "성격을 입력하지 않아 성격 점수는 모두 0점이에요.",
+};
+
+function renderResult(me, store, passed, removed, mode) {
   const el = $("result");
+  lastMatch = { me, passed };
   // 같은 성별은 인원이 많아서 한 줄로 묶어서 보여준다
   const sameGender = removed.filter((r) => r.reason === "같은 성별").length;
   const shown = removed.filter((r) => r.reason !== "같은 성별");
@@ -299,6 +481,7 @@ function renderResult(me, store, passed, removed) {
   const rest = passed.slice(1);
 
   el.innerHTML = `
+    <p class="mode-note mode-${mode}">${MODE_NOTE[mode]}</p>
     <div class="match">
       <div class="match-top">
         <div class="couple">
@@ -319,6 +502,18 @@ function renderResult(me, store, passed, removed) {
       <h4 class="why-title">왜 이 사람이 1위인가?</h4>
       ${whyFirst(me, passed, removed)}
       ${scoreBars(first.items)}
+      <div class="ai-box">
+        <button id="aiBtn" class="ai-btn">✨ AI에게 매칭 이유 듣기</button>
+        <p id="aiText" class="ai-text" hidden></p>
+      </div>
+      <div class="chat">
+        <h4 class="why-title">💌 ${esc(fp.name)}님에게 메시지 보내기</h4>
+        <div class="chat-log" id="chatLog"></div>
+        <form id="chatForm" class="chat-form">
+          <input id="chatInput" maxlength="300" placeholder="첫 메시지를 보내 보세요" autocomplete="off">
+          <button>보내기</button>
+        </form>
+      </div>
     </div>
 
     ${removedHtml}
@@ -400,6 +595,17 @@ renderHero();
 renderWeights();
 renderStore();
 $("go").addEventListener("click", run);
+$("result").addEventListener("click", (e) => {
+  if (e.target.closest("#aiBtn")) explainWithAI();
+});
+$("result").addEventListener("submit", (e) => {
+  if (e.target.id !== "chatForm") return;
+  e.preventDefault();
+  const text = $("chatInput").value.trim();
+  if (!text || chatBusy) return;
+  $("chatInput").value = "";
+  sendChat(text);
+});
 
 // 성격을 입력하면 인식된 키워드를 바로 보여준다
 $("personality").addEventListener("input", () => {
